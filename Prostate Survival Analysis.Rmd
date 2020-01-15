@@ -19,6 +19,15 @@ library(tidyverse)
 library(rpart)
 ```
 
+<!-- 
+*NOTE FOR EMPLOYERS*
+
+Pieces of R code used in the document were used directly from Professor Schiramacher's in-class R notebook files. Some code was used as a template and modified. MA380 is a course emphasizing the application and interpretation of generalized linear models and does not have a programming pre-requisite but a highly prefered familiary with at least one language. I did not include code in this document without researching documentation and understanding what its purpose is.
+
+All writing and interpretation however is completely original and written by myself, John Steer.
+
+-->
+
 ```{r load-data, echo=FALSE, include=FALSE}
 pc <- read.csv("prostate.tsv", 
                sep = "\t",
