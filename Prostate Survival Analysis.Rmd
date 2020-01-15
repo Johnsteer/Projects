@@ -1,0 +1,319 @@
+---
+title: "MA380 Assignment 4: Survival Analysis of Prostate Cancer Patients"
+author: "John Steer"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  html_notebook:
+    fig_caption: yes
+    number_sections: no
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r load-libraries, echo = FALSE, include = FALSE, message = FALSE, warning=FALSE}
+library(survival)
+library(tidyverse)
+library(rpart)
+```
+
+```{r load-data, echo=FALSE, include=FALSE}
+pc <- read.csv("prostate.tsv", 
+               sep = "\t",
+               header = TRUE)
+```
+
+```{r variable-summary, echo =FALSE, include=FALSE}
+summary(pc)
+```
+
+
+# Abstract
+
+This paper performs exploratory data analysis on a dataset from a clinical trial of prostate cancer patients. The goal was to suggest a Cox proportional hazards model to describe the relationship between the variables and the rate at which patients died in order to develop a deeper understanding of what factors lead to an increase or decrease in the likelihood of surviving the disease.
+
+# Introduction
+
+This paper incorporates the use of survival analysis in order to find patterns in the survival of patients suffering from prostate cancer. We will examine the effectiveness of different dosages of estrogen as a treatment for prostate cancer by analyzing the results of a clinical trial. Prostate cancer is very common in men and determining which factors contribute to the likelihood of an individual surviving is valuable information for practitioners.
+
+Other than the magnitude of dosage for treatment, our dataset contains variables describing various pieces of medical information on each patient. These variables may be unfamiliar for someone with little biomedical knowledge of cancer. They are signals for the presence and severity of cancer in a patient. Some examples are the size of the primary tumor, history of cardiovascular disease, and bone metastasis. If we are able to show significant patterns in the survival of prostate cancer patients based on these variables it will allows medical practitioners to better understand the disease and create effective treatments.
+
+The remainder of the report is organized as follows. The next section explores the available data and identifies relationships between variables. In the Model Selection & Interpretation Section we develop several Cox proportional hazards models using different combinations of the variables. The optimal model is chosen and interpreted. We conclude the report with a section summarizing our findings.
+
+
+# Data Characteristics
+
+Before we begin examining the existence of any patterns we have to make sure that the dataset is cleaned up and in proper format for the application of statistical methods. The main issue in the data is that there are a number of missing values for patients across different variables. We cannot perform computations on these variables therefore we must either remove the records with missing values or impute values into them. We used the process of recursive partitioning which examines the variable values for each patient and fills in the missing value of a specific variable based on the values of the other variables for that patient.
+
+The following code chunk uses recursive partitioning to impute estimated values into the positions of the missing values for the `sg` variable. The same method is used for all other variables containing missing values.
+
+```{r sg-imputation, include=FALSE}
+
+(rp <- rpart(sg ~ age + wt + hx + sbp + dbp + hg + sz + ap + bm,
+            data = pc))
+
+idx <- which(is.na(pc$sg))
+pc$i.sg <- pc$sg
+pc$i.sg[idx] <- round(predict(rp, newdata = pc[idx,]),0)
+
+pc[idx, c("ap", "sz", "bm", "sg", "i.sg")]
+rm(idx, rp)
+```
+
+We can now start examining some simple plots known as Kaplan-Meier plots that show the survival probability of a patient given the amount of months that have passed after entering the study.
+
+```{r sz-imputation, echo=FALSE, include=FALSE}
+rp <- rpart(sz ~ age + wt + hx + sbp + dbp + hg + sg + ap + bm,
+            data = pc)
+
+idx <- which(is.na(pc$sz))
+pc$i.sz <- pc$sz
+pc$i.sz[idx] <- round(predict(rp, newdata = pc[idx,]),0)
+
+pc[idx, c("age", "wt", "hg", "sg", "ap", "sz", "i.sz")]
+rm(rp, idx)
+```
+```{r age-imputation, echo=FALSE, include=FALSE}
+rp <- rpart(age ~ wt + hx + sbp + dbp + hg + sg + ap + bm + sz,
+            data = pc)
+
+idx <- which(is.na(pc$age))
+pc$i.age <- pc$age
+pc$i.age[idx] <- round(predict(rp, newdata = pc[idx,]),0)
+
+pc[idx, c("hg", "sg", "sz", "hx", "ap", "dbp", "sbp", "age", "i.age")]
+rm(rp, idx)
+```
+
+```{r wt-imputation, echo=FALSE, include=FALSE}
+rp <- rpart(wt ~ age + hx + sbp + dbp + hg + sg + ap + bm + sz,
+            data = pc)
+
+idx <- which(is.na(pc$wt))
+pc$i.wt <- pc$wt
+pc$i.wt[idx] <- round(predict(rp, newdata = pc[idx,]),0)
+
+pc[idx, c("age", "dbp", "hg", "sz", "ap", "bm", "wt", "i.wt")]
+rm(rp, idx)
+```
+
+```{r new-variables-and-transformations, echo=FALSE, include=FALSE}
+pc$dead <- ifelse(pc$status == "alive", 0, 1)
+```
+
+```{r overall-kaplan-meier-estimate, echo=FALSE, include=FALSE}
+(km <- survfit(Surv(dtime, dead) ~ 1, data = pc))
+```
+
+Let us first examine the standard survival probability of a patient bounded within a 95% confidence interval
+
+```{r km-plot, echo=FALSE}
+par(mar = c(4,4,1,1))
+plot(km,
+     xlab = "Time in months",
+     ylab = "Survival Probability")
+```
+
+The graph shows a steady decline in survival probability as time in months increases, this should be expected as the longer the patient suffers from prostate cancer and the more severe the tumor gets, the likelihood of survival should decrease. A general pattern is that every 10 months the survival probability usually drops between 10 and 20 percent. The most drastic decline seems to occur between 20 and 40 months where survival probability drops nearly 30% from 70% to just above 40%
+
+Let us now examine a similar graph where multiple survival probabilities are plotted, one for each dosage of estrogen.
+
+```{r km-by-treatment-option, echo=FALSE}
+km.rx <- survfit(Surv(dtime, dead) ~ rx,
+        data = pc)
+
+par(mar = c(4,4,1,1))
+plot(km.rx,
+     xlab = "Time in months",
+     ylab = "Survival Probability",
+     col = c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"),
+     lwd = 2)
+abline(h = 0.5)
+```
+```{r, echo=FALSE, include=FALSE}
+km.rx
+```
+
+There are 3 different dosages of estrogen (0.2 mg, 1.0 mg, 5.0 mg) and one placebo dosage. 
+
+Green = 0.2 mg
+Orange = 1.0 mg
+Blue = 5.0 mg
+Pink = placebo
+
+We see that the lines representing the 0.2 mg, 5.0 mg, and placebo dosages are all very similar to the plot generated in the first graph shown. One noticeable deviation is that patients with a 5.0 mg dose of estrogen see a noticeable drop in survival probability compared to others between 0 and 10 months. This might mean that such a large concentration of estrogen is actually detrimental to patients in the short term i.e. within a year. On the contrary, patients with the 1.0 mg dose of estrogen not only experience a slightly above average survival probability in the same time frame but at nearly all points in time. Starting at around 20 months after entering the trial, these patients gradual experience larger survival probabilities compared to all other groups of treatment. After 60 months, this difference is nearly 15%. Based on this Kaplan Meier graph, a 1.0 mg dose of estrogen seems to be the optimal dose to treat prostate cancer out of the available options.
+
+## Covariate Analysis
+
+After looking at the general trend in survival probability by treatment we can now start to determine which variables or "covariates" in the dataset might be creating these trends. A simple and graphical way to determine which covariates should be included in the model is by fitting a Cox proportional hazards model to a single constant term. This model will be referred to as the Null model. We can graph the actual values for each of our covariates against the values of the martingale residuals of the Null model. This will result in a scatter plot for continuous variables and for categorical variables a series of box plots for each level. From these graphs we can observe how the residuals of the Null model change as the values of the covariate change. If we see can determine that there is a pattern in these relationships then we can be confident the covariate may have a predictive effect on the survival rate at certain periods of time.
+
+Lets start by examining some intuitive variables such as `age`, `sz` the size of the primary tumor, and `hx` which holds a value of 1 if the patient has a history of cardiovascular disease and 0 if not.
+
+```{r coxph-no-covariates, echo=FALSE, include=FALSE}
+cph.null <- coxph(Surv(dtime, dead) ~ 1,
+                  data = pc)
+cph.null
+```
+
+```{r martingale-residuals-for-null-model, echo=FALSE, include=FALSE}
+pc$null.mr <- residuals(cph.null, type = "martingale")
+```
+
+**Null Martingale Residuals by Age**
+```{r null-residuals-vs-age1, echo=FALSE}
+ggplot(pc) +
+  aes(x = i.age, y = null.mr) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "Age", y = "Null Martingale Residuals")
+```
+
+The above graph includes locally weighted scatter plot smoothing (LOESS) in the form of the blue curve that runs along the plot. This line is used to easily visualize the trend in the Null Martingale residuals. As we can see, there is no significant pattern in the residuals until the patients' ages reach 70 years old. From this point on the residuals pass above 0 for the first time and increase steadily to a maximum of around 0.55. It is quite clear that the survival rate is being affected differently for patients in the 70-90 age bracket than the 50-70 age bracket. This observation gives us a valid reason to include `age` in our final Cox proportional hazards model.
+
+Let's now examine one more continuous covariate `sz` and then one factor covariate `hx`
+
+**Null Martingale Residuals by Tumor Size**
+```{r null-residuals-vs-sz, echo=FALSE}
+ggplot(pc) +
+  aes(x = i.sz, y = null.mr) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "Tumor Size", y = "Null Martingale Residuals")
+```
+
+One of the first things to notice here is that there is a much higher concentration of tumor sizes between the 0-20 cm squared range than the 20 cm squared and higher range. This means that the pattern of the residuals in the lower bracket will be more representative of the true impact of tumor size on survival probability than the higher brackets will due to a higher number of observations. That being said, the LOESS line demonstrates a consistent upward trend in the Null Martingale residuals by tumor size making it an intuitive and significant variable to include based on residual analysis. 
+
+Lastly we examine the relationship between the history of cardiovascular disease in the patient and the Null Martingale residuals.
+
+**Null Martingale Residuals by history of cardiovascular disease**
+```{r null-residuals-vs-hx1, echo=FALSE}
+ggplot(pc) +
+  aes(x = factor(hx), y = null.mr) +
+  geom_boxplot() +
+  labs(x = "History of Cardiovascular Disease", y = "Null Martingale Residuals")
+```
+
+In the analysis of factor/categorical variables our goals is to determine if the distribution of the Null Martingale residuals changes between each factor level. If the medians (the horizontal line in the inner portion of the box plot) of each level are very close or identical then the interpretation is that the variable has no new information to contribute to the model. However, in this case while the medians are relatively close to each other the overall distribution for those patients who do have a history of cardiovascular disease is heavily skewed to higher values. Again, while history of cardiovascular disease seems like an intuitive covariate to include in the model it is important to double check this assumption using residual analysis.
+
+# Model Selection & Interpretation
+In this section the final chosen model will be presented with a discussion of its interpretation. Then the criteria chosen and method used to eliminate competing models will be discussed as well as the steps taken to modify certain covariates in order to satisfy the linearity contribution assumption.
+
+```{r full-model, echo=FALSE, include=FALSE}
+all.cph <- coxph(Surv(dtime, dead) ~ rx + pspline(i.age) + pspline(i.wt) + pf + hx + sbp + dbp +
+                     ekg + hg + i.sz + i.sg + ap + bm ,
+                 data = pc)
+```
+
+```{r echo=FALSE, include=FALSE}
+res.step <- step(all.cph,
+                 scope = list(
+                   upper = ~ rx + pspline(i.age) + pspline(i.wt) + pf + hx + sbp + dbp +
+                     ekg + hg + i.sz + i.sg + ap + bm,
+                   lower = ~ rx))
+```
+
+```{r min-model , echo=FALSE, include=FALSE}
+min.cph <- coxph(Surv(dtime, dead) ~ rx ,
+                 data = pc)
+```
+
+```{r echo=FALSE, include=FALSE}
+res2.step <- step(min.cph,
+                 scope = list(
+                   upper = ~ rx + i.age + i.wt + pf + hx + sbp + dbp +
+                     ekg + hg + i.sz + i.sg + ap + bm,
+                   lower = ~ rx))
+```
+
+There are several ways to going about fitting the optimal Cox proportional hazard model to the data in question. In the previous section we demonstrated how we could pick potential candidate variables to include in our model. However it is important to understand that these covariates are only potentially useful.
+
+The entire purpose of the clinical trial was to test the effectiveness of different dosages of estrogen in treating prostate cancer. Therefore one variable that is certain to be included is `rx` representing the dosage. To determine which other covariates to include we employ the use of the Stepwise Algorithm using Akaike Information Criterion (AIC) as the criterion. The Stepwise method automatically chooses the set of covariate variables to fit the modeled through a recursive algorithm. The goal is to minimize the information loss of the model which is associated with the fact that the statistical representation of the true effect of the covariates on survival probability will not be exact. AIC examines the trade-off between goodness of fit and simplicity of the model. Therefore the algorithm returns the model with the least amount of relative information loss i.e., the lowest AIC. It is important to note that the stepwise method employs a "greedy" algorithm, meaning it will not return a globally optimal model. Instead it will choose the next best covariate to add at each step of the process finding locally optimal covariates. Finding globally optimum solutions often requires unreasonable amounts of computational power. Therefore, the stepwise method is a strong algorithm in terms of its ability to produce strongly fitted models for a relatively lower amount of processing.
+
+The following output presents the final model chosen by the Stepwise algorithm as well as some summarizing characteristics such as coefficient values and significance values.
+
+```{r}
+res.step
+```
+
+We are interested in how the covariates impact the probability of survival or similarly the likelihood of a death occurring. The Cox proportional hazards model provides us with estimated beta coefficients that represent these impacts.
+
+The final model that we recommend be used for the survival analysis of prostate cancer in our dataset consists of the following covariates:
+
+| Item | Variable      | Definition                                           |
+|-----:|:--------------|:-----------------------------------------------------|
+|  1   | rx            | Treatment type                                       |
+|  2   | dtime         | Months to follow up                                  |
+|  3   | i.age         | Age in years                                         |
+|  4   | i.wt          | Weight Index                                         |
+|  5   | hx            | History of Cardiovascular Disease                    |
+|  6   | hg            | Serum Hemoglobin                                     |
+|  7   | i.sz          | Size of primary tumor (cm sq)                        |
+|  8   | i.sg          | Combined index of stage and hist grade               |
+
+There are a few important distinction to make. The covariates that are preceeded with "i." are new variables that were created based on the originals after imputing values for null or missing values in these variables. This step was done earlier in the report. The variables `i.wt` and `i.age` are wrapped in a function called pspline(). This was done in order to compensate for the non-linearity of these covariates and will be discussed in more detail later in this section.
+
+The coefficient values show whether an increase in a specific covariate will result in an increase or decrease in the hazard function which returns the probability of a patient dying. Note that the Cox proportional hazards model is an exponential model. This means that the actual value of the coefficients are showing the effect on the log-hazard rate. If we want to determine the magnitude of a covariate's effect on the non log-hazard rate we must take the exponential of its estimated coefficient. If the transformed coefficient is equal to 1 then there is no additional impact of the covariate on the hazard rate. If the value is greater than 1 then there is an increase in hazard rate therefore a decrease in survival probability. If the value is less than 1 then the opposite is true.
+
+Here are some example interpretations based on the output of our final model. The estimated coefficient for the variable representing the 1.0 mg dosage of estrogen is -0.40030, right away we notice the coefficient is negative and therefore the treatment causes a decrease in the hazard rate (dying of prostate cancer). After applying the value to the exponential function we get 0.67012 meaning that hazard rate will decrease by 32.99% (1.00 - 0.67012) for a patient receiving the 1.0 mg dosage of estrogen as compared to a patient receiving the 0.2 mg dosage. Remember that since the value of the exponential of the coefficient is less than 1.0 the multiplicative effect on the hazard rate will decrease the value. Therefore we subtract the exponential coefficient from 1.0 to see the magnitude of the decrease. Alternatively, the coefficient for the variable representing the 5.0 mg dosage of estrogen is -0.05158 and after applying the exponential function we get a value of 0.9497. This means that receiving the 5.0 mg dosage of estrogen would decrease the hazard rate by 0.0503% compared to if a patient were to receive the 0.2 mg dosage. Keep in mind that the variable `rx` is a categorical or 'factor' variable with 4 levels indicating the types of dosage. Looking at the output of the model summary notice how there is no variable for the 0.2 mg dosage of estrogen. This is because the regression functions in R assigned the 0.2 mg level as the base level for the variable. The program splits up the variable 'rx' into 3 separate binary variables. The coefficients of the variables describe the impact of that specific type of dosage has on the hazard function compared to the base layer, in this case its is 0.2 mg. 
+
+The estimated coefficient for `i.age` is 0.01997 after applying the exponential function we get a value of 1.0202. This means that for a one year increase in age we expect the patient to have a 2.02% increase in likelihood of dying as compared to a baseline hazard function. The estimated coefficient for `hx` is 0.51639 after applying the exponential function we get a value of 1.676 which means if a patient has a history of cardiovascular disease we expect them to have a 67.6% increase in the likelihood of dying compared to a baseline hazard function.
+
+One of the major assumptions of the Cox proportional hazards model is that the covariates have a linear contribution to log hazard rate. When graphing Martingale Residuals against different covariates during the modeling stage we noticed a non-linear relationship with certain variables. To compensate we use splines which are similar to the LOESS lines used before but actually generate multiple different curves in the form of a piece wise function. This helps capture local patterns and conforms the data to pass the linearity assumption.
+ 
+# Summary and Concluding Remarks
+
+Upon first examining the dataset it was noticed that there were missing values that would prevent further analysis. The first step of the exploration and modeling process was to impute new values using recursive partitioning. This ensured that our dataset was complete and ready for statistical analysis. After examining the different variables in the dataset and exploring whether they would provide additional information in explaining what effect they have on the probability of survival in prostate cancer patients we then start building models. Stepwise regression was used to determine the final Cox proportional hazards model.
+
+Based on the interpretations of the model in the previous section it seems that the 1.0 mg dosage of estrogen was the most effective dosage in the trial by reducing the hazard rate by 32.99% which is significantly larger than the reduction cause by the 5.0 mg group and the placebo. Additionally, the Kaplan Meyer graph that was produced earlier in the report also shows the exceptional performance of the 1.0 mg test group compared to the other dosages and the placebo. Recall that the orange line represents the 1.0 mg dosage group.
+
+```{r km-by-treatment-option2, echo=FALSE}
+km.rx <- survfit(Surv(dtime, dead) ~ rx,
+        data = pc)
+
+par(mar = c(4,4,1,1))
+plot(km.rx,
+     xlab = "Time in months",
+     ylab = "Survival Probability",
+     col = c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3"),
+     lwd = 2)
+abline(h = 0.5)
+```
+
+According to the survival analysis conducted in this report it would be my recommendation that the 1.0 mg dosage of estrogen is the amount amount compared to a 0.2 mg dosage, 5.0 mg dosage, and no dosage at all. Additionally, the Cox proportional hazards model shown in the model selection section of the report can be used to examine the patterns in the relationship between certain covariates and the hazard rate, which in this application describes the probability of succumbing to prostate cancer as time goes on after joining the clinical trial. This model does not describe the true impact that the covariates like age, gender, and tumor size have on survival but rather an estimated effect. It is also dangerous to generalize the findings in this report to all people who suffer from prostate cancer. The data comes from a clinical trial with 502 patients which is a very small sample size to draw meaningful generalized conclusions from. The conclusions drawn in this report are to be taken in the context of the clinical trial it is based on.
+
+
+# References
+
+D.P. Byar and S.B. Green, "The choice of treatment for cancer
+patients based on covariate information: Application to
+prostate cancer", Bulletin Cancer, Paris, 67:477-488, 1980
+
+# Appendix 
+
+
+Additional graphs used during exploratory data analysis
+
+```{r null-residuals-vs-hx}
+ggplot(pc) +
+  aes(x = factor(hx), y = null.mr) +
+  geom_boxplot() +
+  labs(x = "History of Cardiovascular Disease", y = "Null Martingale Residuals")
+```
+
+```{r null-residuals-vs-serum-hemoglobin}
+ggplot(pc) +
+  aes(x = i.sg, y = null.mr) +
+  geom_point() +
+  geom_smooth() +
+  labs(x = "Serum Hemoglobin", y = "Null Martingale Residuals")
+```
+
+```{r null-residuals-vs-sg-as-factor}
+ggplot(pc) +
+  aes(x = factor(i.sg), y = null.mr) +
+  geom_boxplot() +
+  labs(x = "Stage and Hist. Grade", y = "Null Martingale Residuals")
+```
+
