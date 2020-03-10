@@ -7,8 +7,8 @@ My first project labeled *Predicting Movie Genre.ipnyb* is a basic application o
 
 ## Personal Projects
 ### Ideas 
-*Data Visualization using Plot.ly's Dash framework - FiveThirtyEight dataset on Aderrall use in the U.S.
-*Increase the scope of Movie Genre project by trying to improve accuracy metric with better input data i.e. filter on rating as well as number of ratings for more representative data
-*Host portfolio on Django web app
+1. Data Visualization using Plot.ly's Dash framework - FiveThirtyEight dataset on Aderrall use in the U.S.
+2. Increase the scope of Movie Genre project by trying to improve accuracy metric with better input data i.e. filter on rating as well as number of ratings for more representative data
+3. Host portfolio on Django web app
 
 
